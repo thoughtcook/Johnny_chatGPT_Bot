@@ -1,15 +1,21 @@
 import os
 import requests
+import logging
 import schedule
 import time
 from config import TELEGRAM_BOT_TOKEN, OPENAI_API_KEY, YOUR_CHAT_ID
 from bs4 import BeautifulSoup
 import openai
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
 WSJ_URL = 'https://www.wsj.com/'
 
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 def get_top_stories():
     response = requests.get(WSJ_URL)
@@ -30,23 +36,23 @@ def summarize(text):
     summary = response.choices[0].text.strip()
     return summary
 
-def send_summary(chat_id):
+def send_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_stories = get_top_stories()
     summaries = [summarize(story.text) for story in top_stories]
     message = "\n\n".join(summaries)
-    updater.bot.send_message(chat_id=chat_id, text=message)
+    context.bot.send_message(chat_id=YOUR_CHAT_ID, text=message.text)
 
 def daily_summary():
-    send_summary(YOUR_CHAT_ID)
+    send_summary()
 
 def main():
-    updater = Updater(TELEGRAM_BOT_TOKEN)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("summary", send_summary))
-    updater.start_polling()
-    updater.idle()
-    updater.start_polling()
-    schedule.every().day.at("08:00").do(daily_summary)
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    summary_handler = CommandHandler('summary', daily_summary)
+    
+    application.add_handler(CommandHandler("summary", daily_summary))
+    application.run_polling()
+
+    # schedule.every().day.at("08:00").do(daily_summary)
     while True:
         schedule.run_pending()
         time.sleep(1)
